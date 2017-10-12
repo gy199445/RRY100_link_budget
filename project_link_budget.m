@@ -1,18 +1,20 @@
 % GEO stationary satellite link budget calculation
 %constants
 Re = 6371E3; %earth r
-k = 1.38064852E-32; %boltzman's constant
+k = 1.38064852E-23; %boltzman's constant
 h = 35786E3; %geostationary orbit height
 % center frequency
 f = 26.644E9; %26.644 GHz
 % speed of light
 c = 3E8;
 % antennas
-groundAntennaGain = 0.6*(pi*5*f/c)^2; %5-meter dish
+groundAntennaGain = 0.6*(pi*3*f/c)^2; %5-meter dish
 groundAntennaGain = 10*log10(groundAntennaGain);
-satelliteAntennaGain = 10*log10(0.7*(pi*3.5*f/c)^2); %assume 3.5m dish
-PtxSat = 30; %1000W
+satelliteAntennaGain = 10*log10(0.7*(pi*0.5*f/c)^2); %assume 3.5m dish
+PtxSat = 10*log10(100); %1000W
 PtxGround = 10*log10(5000); %5000W
+%tx rate
+Rb = 10*10^6;%10Mbps
 %amplifiers
 %locations
 %*********Plug in your settings here************
@@ -20,12 +22,12 @@ PtxGround = 10*log10(5000); %5000W
 satLongitude = 45;
 satLatitude = 0;
 %target ground station location
-targetLongitude = -56;
-targetLatitude = -67;
+targetLongitude = 67;
+targetLatitude = 57;
 %ground station 0.001% rain rate
 targetRainRate = 250; %zone P
 %polarization angle
-polarizationAngle = pi/2; %assume vertical polarization
+polarizationAngle = pi/4; %assume circular polarization
 %coding gain
 codingGain = 5;
 %*********Plug in your settings here***********
@@ -39,9 +41,27 @@ k_H = 0.0751; k_v = 0.0691; alpha_H = 1.099;alpha_v = 1.065;
 [elevationAngle,~] = ...
     calcElevationAngle([satLatitude;satLongitude],[targetLatitude;targetLongitude],Re,h);
 rainAttenuation = calcRainAtt([k_H;k_v],[alpha_H;alpha_v],targetRainRate,elevationAngle,polarizationAngle,DFs);
-
-%display result:
-fprintf('Free space loss: %.4f dB\n Rain attenuation %4f dB\n',LFs,rainAttenuation)
+%% noise temperature at receivers
+%DOWNLINK
+%antenna temperature
+rainAttenuationLinear = 10^(rainAttenuation/10);
+TRain = 275*(1-1/rainAttenuationLinear);
+Tsky = 9/(rainAttenuationLinear);
+TpFeeder = 290;%ground station antenna feeder phy. temp.
+LFeeder = 1.1220; %loss = 0.5dB
+TFeederEff = TpFeeder*(LFeeder-1);
+noiseTempAMP = noiseTempCalc([1 2 2],[15 30 40]);
+noiseTemp = (TRain + Tsky + TFeederEff)/LFeeder + noiseTempAMP;
+N0 = noiseTemp*k;
+%% carrier power
+%DOWNLINK
+PcDownLink = sum([satelliteAntennaGain PtxSat -LFs -rainAttenuation groundAntennaGain -0.5]);
+%UPLINK
+PcUpLink = sum([satelliteAntennaGain PtxGround -LFs -rainAttenuation groundAntennaGain -0.5]);
+%% Eb/N0
+EbN0 = PcDownLink - 10*log10(N0) - 10*log10(Rb);
+%% display result:
+fprintf('Free space loss: %.4f dB\n Rain attenuation %.4f dB\n Eb/N0: %.4f\n',LFs,rainAttenuation,EbN0)
 %functions to be used
 function [elevation,azimuth] = calcElevationAngle(sate,target,Re,h)
     %compute the antenna elevation angle of ground station
@@ -81,4 +101,17 @@ function [rainAttenuation] = calcRainAtt...
     r = 1/(1+linkDistance/d0);
     %the rain attenuation at 99.99% (0.01)
     rainAttenuation = K*(RR^ALPHA)*linkDistance*r;
+end
+function [noiseTemp] = noiseTempCalc(noiseFigures,gains)
+    %compute the effective inuput noise temperature of
+    %3 cascaded amplifiers
+    %noiseFigure [1*3] noise figure in dB
+    %gains [1*3] AMP gains in dB
+    %noiseTemp effective input noise temp in K
+    Tref = 290;
+    gains = 10.^(gains/10);%convert to linear
+    EffInputT = Tref*(10.^(noiseFigures/10) - 1);%in K
+    noiseTemp = EffInputT(1) + ...
+    EffInputT(2)/(gains(1)) + ...
+        EffInputT(3)/(gains(1)*gains(2));
 end
