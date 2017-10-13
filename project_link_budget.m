@@ -10,6 +10,7 @@ c = 3E8;
 % antennas
 groundAntennaGain = 0.6*(pi*3*f/c)^2; %5-meter dish
 groundAntennaGain = 10*log10(groundAntennaGain);
+groundAntennaHeight = 5/1000;
 satelliteAntennaGain = 10*log10(0.7*(pi*0.5*f/c)^2); %assume 3.5m dish
 PtxSat = 10*log10(100); %1000W
 PtxGround = 10*log10(5000); %5000W
@@ -19,13 +20,13 @@ Rb = 10*10^6;%10Mbps
 %locations
 %*********Plug in your settings here************
 %sub satellite points (in deg.)
-satLongitude = 45;
+satLongitude = 0;
 satLatitude = 0;
 %target ground station location
-targetLongitude = 67;
-targetLatitude = 57;
-%ground station 0.001% rain rate
-targetRainRate = 250; %zone P
+targetLongitude = 0;
+targetLatitude = 0;
+%ground station 0.01% rain rate
+targetRainRate = 145; %zone P
 %polarization angle
 polarizationAngle = pi/4; %assume circular polarization
 %coding gain
@@ -37,10 +38,11 @@ DFs = ...
     sqrt(1+0.42*(1-cos(targetLatitude*pi/180)*cos(abs(targetLongitude-satLongitude)*pi/180)))*h;
 LFs = 10*log10((4*pi*DFs*f/c)^2);
 %rain atennuation
-k_H = 0.0751; k_v = 0.0691; alpha_H = 1.099;alpha_v = 1.065;
+k_H =  0.1724; k_v =  0.9884; alpha_H = 0.1669;alpha_v = 0.9421;
 [elevationAngle,~] = ...
     calcElevationAngle([satLatitude;satLongitude],[targetLatitude;targetLongitude],Re,h);
-rainAttenuation = calcRainAtt([k_H;k_v],[alpha_H;alpha_v],targetRainRate,elevationAngle,polarizationAngle,DFs);
+rainAttenuation = ...
+    calcRainAtt(targetRainRate,[k_H;k_v],[alpha_H;alpha_v],groundAntennaHeight,elevationAngle,polarizationAngle,targetLatitude*pi/180,f/(10^9));
 %% noise temperature at receivers
 %DOWNLINK
 %antenna temperature
@@ -81,26 +83,65 @@ function [elevation,azimuth] = calcElevationAngle(sate,target,Re,h)
     azimuth = sign(sin(sate(2) - target(2))) ...
         * acos( (sin(sate(1)) - sin(target(1))*cos(delta)) / (sin(delta)*cos(target(1))));
 end
-function [rainAttenuation] = calcRainAtt...
-    (k,alpha,RR,elevAngle,polarAngle,linkDistance)
+function [Ap] = calcRainAtt...
+    (RR,k,alpha,hs,elevAngle,polarAngle,targetLatitude,f)
     %compute rain attenuation
-    %follow the calculation of 'introduction to RF propagation' page 243
-    %k = [k_H;k_v]
-    %alpha = [alpha_H;alpha_v]
-    %RR = 99.999% rain rate (mm/h)
+    %follow ITU_P618 page 7
+    %RR 0.01% rain rate mm/h
+    %k [k_h k_v]
+    %alpha [alpha_h, alpha_v] %from ITU-R P.838-3
+    %hs ground station height above mean sea level (km)
     %elevAngle = ground station elevation angle in rad
-    %polarAngle = polarization angle in rad
-    %sate = [satellite_latitude; satellite_longitude]
-    %target = [ground_latitude; ground_longtitude]
-    %linkDistance = link distance in meter
-    linkDistance = linkDistance/1000;%required
+    %polarAngle in rad
+    %targetLatitude target latitude in rad
+    %f: frequency in GHZ
+    %Re effective radius of earth 8500km
+    %rain height (ITU-R P.839)
+    Re = 8500;
+    hr = hs + 0.36;
+    elevAngle_deg = elevAngle*180/pi;
+    %slant-path
+    if(elevAngle_deg>=5)
+        Ls = (hr-hs)/sin(elevAngle);
+    else
+        Ls = 2*(hr-hs)/(sqrt(sin(elevAngle)^2+(2*(hr-hs))/Re)+sin(elevAngle));
+    end
+    %horizontal projection
+    Lg = Ls*cos(elevAngle);
+    %specific attenuation
+    %k and gamma_r is from ITU-R P838
     K = (k(1)+k(2)+(k(1)-k(2))*cos(elevAngle)^2*cos(2*polarAngle))/2;
-    ALPHA = (k'*alpha + (k(1)*alpha(1) -...
-        k(2)*alpha(2))*cos(elevAngle)^2 * cos(2*polarAngle))/(2*K);
-    d0 = 35*exp(-0.015*RR);
-    r = 1/(1+linkDistance/d0);
-    %the rain attenuation at 99.99% (0.01)
-    rainAttenuation = K*(RR^ALPHA)*linkDistance*r;
+    ALPHA = (k(1)*alpha(1)+k(2)*alpha(2)+...
+        (k(1)*alpha(1)-k(2)*alpha(2))*cos(elevAngle)^2*...
+    cos(2*polarAngle))/2/K;
+    gamma_r = K*(RR)^ALPHA;
+    %horizontal reduction factor
+    r_001 = 1/(1+0.78*sqrt(Lg*gamma_r/f)-0.38*(1-exp(-2*Lg)));
+    %vertical adjustment factor
+    zeta = atan((hr-hs)/(Lg*r_001));%in rad
+    if zeta>elevAngle
+        LR = Lg*r_001/cos(elevAngle);
+    else
+        LR = (hr-hs)/sin(elevAngle);
+    end
+    if abs(targetLatitude)<36*pi/180
+        chi = 36*pi/180 - abs(targetLatitude);%rad
+    else
+        chi = 0;
+    end
+    chi_deg = chi*180/pi;
+    v_001 = 1/(1 + sqrt(sin(elevAngle)) * (31 * (1-exp(-(elevAngle_deg/(1+chi_deg)))) * sqrt(LR*gamma_r) / (f^2) -0.45 ));
+    LE = LR*v_001;
+    A_001 = gamma_r*LE;
+    %scale to 0.001
+    targetLatitude_deg = targetLatitude * 180/pi;
+    if abs(targetLatitude_deg)<36 && elevAngle_deg>=25
+        beta = -0.005*(abs(targetLatitude_deg) - 36);
+    else
+        beta = -0.005*(abs(targetLatitude_deg) - 36)+1.8-4.25*sin(elevAngle);
+    end
+    p = 0.001;
+    Ap = A_001*(p/0.01)^(- (0.655+ 0.033*log(p) - 0.045*log(A_001)-beta*(1-p)*sin(elevAngle)) );
 end
 function [noiseTemp] = noiseTempCalc(noiseFigures,gains)
     %compute the effective inuput noise temperature of
