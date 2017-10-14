@@ -4,15 +4,16 @@ Re = 6371E3; %earth r
 k = 1.38064852E-23; %boltzman's constant
 h = 35786E3; %geostationary orbit height
 % center frequency
-f = 26.644E9; %26.644 GHz
+%f = 26.644E9; %26.644 GHz
+f=2.4E9;
 % speed of light
 c = 3E8;
 % antennas
-groundAntennaGain = 0.6*(pi*3*f/c)^2; %5-meter dish
+groundAntennaGain = 0.6*(pi*5*f/c)^2; %5-meter dish
 groundAntennaGain = 10*log10(groundAntennaGain);
 groundAntennaHeight = 5/1000;
-satelliteAntennaGain = 10*log10(0.7*(pi*0.5*f/c)^2); %assume 3.5m dish
-PtxSat = 10*log10(100); %1000W
+satelliteAntennaGain = 10*log10(0.7*(pi*3.5*f/c)^2); %assume 3.5m dish
+PtxSat = 10*log10(500);
 PtxGround = 10*log10(5000); %5000W
 %tx rate
 Rb = 10*10^6;%10Mbps
@@ -24,9 +25,9 @@ satLongitude = 0;
 satLatitude = 0;
 %target ground station location
 targetLongitude = 0;
-targetLatitude = 57;
+targetLatitude = -36;
 %ground station 0.01% rain rate
-targetRainRate = 28; %zone P
+targetRainRate = 22;
 %polarization angle
 polarizationAngle = pi/4; %assume circular polarization
 %coding gain
@@ -42,7 +43,8 @@ DFs = ...
     sqrt(1+0.42*(1-cos(targetLatitude*pi/180)*cos(abs(targetLongitude-satLongitude)*pi/180)))*h;
 LFs = 10*log10((4*pi*DFs*f/c)^2);
 %rain atennuation
-k_H =  0.1724; k_v =  0.9884; alpha_H = 0.1669;alpha_v = 0.9421;
+%k_H =  0.1724; k_v = 0.1669 ; alpha_H = 0.9884;alpha_v = 0.9421; %(26GHz)
+k_H =  0.0001321; k_v =  0.0001464; alpha_H = 1.1209;alpha_v = 1.0085; %(2.5GHz)
 [elevationAngle,~] = ...
     calcElevationAngle([satLatitude;satLongitude],[targetLatitude;targetLongitude],Re,h);
 rainAttenuation = ...
@@ -104,7 +106,7 @@ function [Ap] = calcRainAtt...
     %Re effective radius of earth 8500km
     %rain height (ITU-R P.839)
     Re = 8500;
-    hr = hs + 0.36;
+    hr = calcRainHeight(targetLatitude) + 0.36;
     elevAngle_deg = elevAngle*180/pi;
     %slant-path
     if(elevAngle_deg>=5)
@@ -161,4 +163,19 @@ function [noiseTemp] = noiseTempCalc(noiseFigures,gains)
     noiseTemp = EffInputT(1) + ...
     EffInputT(2)/(gains(1)) + ...
         EffInputT(3)/(gains(1)*gains(2));
+end
+function [h0] = calcRainHeight(targetLatitude)
+%h0   height of isotherm
+%targetLatitude: latitude in deg
+    if targetLatitude>23
+        h0 = 5-0.075*(targetLatitude-23);
+    elseif targetLatitude>0 && targetLatitude<23
+        h0 = 5;
+    elseif targetLatitude<=0 && targetLatitude>=-21
+        h0 = 5;
+    elseif targetLatitude<-21 && targetLatitude>=-71
+        h0=5+0.1*(targetLatitude+21);
+    else
+        h0=0;
+    end
 end
