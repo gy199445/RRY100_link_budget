@@ -5,29 +5,29 @@ k = 1.38064852E-23; %boltzman's constant
 h = 35786E3; %geostationary orbit height
 % center frequency
 %f = 26.644E9; %26.644 GHz
-f=2.4E9;
+f=8E9;
 % speed of light
 c = 3E8;
 % antennas
-groundAntennaGain = 0.6*(pi*5*f/c)^2; %5-meter dish
+groundAntennaGain = 0.6*(pi*3.5*f/c)^2; %5-meter dish
 groundAntennaGain = 10*log10(groundAntennaGain);
 groundAntennaHeight = 5/1000;
-satelliteAntennaGain = 10*log10(0.7*(pi*3.5*f/c)^2); %assume 3.5m dish
-PtxSat = 10*log10(500);
-PtxGround = 10*log10(5000); %5000W
+satelliteAntennaGain = 10*log10(0.7*(pi*0.5*f/c)^2); %assume 1.5m dish
+PtxSat = 10*log10(300);
+PtxGround = 10*log10(1000); %1000W
 %tx rate
-Rb = 10*10^6;%10Mbps
+Rb = 30*10^6;%10Mbps
 %amplifiers
 %locations
 %*********Plug in your settings here************
 %sub satellite points (in deg.)
-satLongitude = 0;
+satLongitude = -30;
 satLatitude = 0;
 %target ground station location
-targetLongitude = 0;
-targetLatitude = -36;
+targetLongitude = -82;
+targetLatitude = -54;
 %ground station 0.01% rain rate
-targetRainRate = 22;
+targetRainRate = 145;
 %polarization angle
 polarizationAngle = pi/4; %assume circular polarization
 %coding gain
@@ -36,6 +36,11 @@ codingGain = 5;
 codeRate = 0.5;
 %roll off factor of pulse shaping
 rollOffFactor = 0.5;
+%calculate bandwidth
+infoBitRate = 10*10^6; %in bps
+rawBitRate = infoBitRate/codeRate;
+MCS = 4;%for QPSK (2 bits/symbol)
+BW = rawBitRate/log2(MCS) * (1+rollOffFactor);
 %*********Plug in your settings here***********
 %free space loss
 %link distance in meters
@@ -44,7 +49,8 @@ DFs = ...
 LFs = 10*log10((4*pi*DFs*f/c)^2);
 %rain atennuation
 %k_H =  0.1724; k_v = 0.1669 ; alpha_H = 0.9884;alpha_v = 0.9421; %(26GHz)
-k_H =  0.0001321; k_v =  0.0001464; alpha_H = 1.1209;alpha_v = 1.0085; %(2.5GHz)
+%k_H =  0.0001321; k_v =  0.0001464; alpha_H = 1.1209;alpha_v = 1.0085; %(2.5GHz)
+k_H = 0.004115;alpha_H = 1.3905;k_v = 0.003450;alpha_v = 1.3797;%(8ghz)
 [elevationAngle,~] = ...
     calcElevationAngle([satLatitude;satLongitude],[targetLatitude;targetLongitude],Re,h);
 rainAttenuation = ...
@@ -60,19 +66,41 @@ LFeeder = 1.1220; %loss = 0.5dB
 TFeederEff = TpFeeder*(LFeeder-1);
 noiseTempAMP = noiseTempCalc([1 2 2],[15 30 40]);
 noiseTemp = (TRain + Tsky + TFeederEff)/LFeeder + noiseTempAMP;
+noiseTempUplink = (290+LFeeder)/LFeeder + noiseTempAMP;
 N0 = noiseTemp*k;
+N0Uplink = noiseTempUplink*k;
+N = N0 * BW;
+NUplink = N0Uplink * BW;
 %% carrier power
 %DOWNLINK
-PcDownLink = sum([satelliteAntennaGain PtxSat -LFs -rainAttenuation groundAntennaGain -0.5]);
+PcDownLink = sum([satelliteAntennaGain PtxSat -LFs -rainAttenuation groundAntennaGain -0.5 + codingGain]);
 %UPLINK
-PcUpLink = sum([satelliteAntennaGain PtxGround -LFs -rainAttenuation groundAntennaGain -0.5]);
-%% C/N0
-C_N0 = PcDownLink - 10*log10(N0) - 10*log10(Rb);
-%Es/N0
+PcUpLink = sum([satelliteAntennaGain PtxGround -LFs -rainAttenuation groundAntennaGain -0.5 +codingGain]);
+%% C/N (Es/N0)
+C_N = PcDownLink - 10*log10(N);
+C_N_Uplink = PcUpLink - 10*log10(N);
 %Eb/N0
-%% display result:
-fprintf('Free space loss: %.4f dB\n Rain attenuation %.4f dB\n C/N0: %.4f\n',LFs,rainAttenuation,C_N0)
-%functions to be used
+EbN0 = C_N  + 10*log10(infoBitRate/BW);
+EbN0_Uplink = C_N_Uplink + 10*log10(infoBitRate/BW);
+%% save result to xls:
+xlsName = 'link_budget';
+saveData = {'DOWNLINK',' ','UPLINK',' ';
+    'Sat. EIRP(dBW)',satelliteAntennaGain+PtxSat,'Grd. EIRP(dBW)',groundAntennaGain+PtxGround;
+    'Link distance(km)',DFs/1000,'Link distance(km)',DFs/1000;
+    'Free space loss(dB)',LFs,'Free space loss(dB)',LFs;
+    'Rain rate(mm/h)',targetRainRate,'Rain rate(mm/h)',targetRainRate;
+    'Rain att.(dB)',rainAttenuation,'Rain att.(dB)',rainAttenuation;
+    'Rx antenna gain(dBi)',groundAntennaGain,'Rx antenna gain(dBi)',satelliteAntennaGain;
+    'Rx feeder loss(dB)',0.5,'Rx feeder loss(dB)',0.5;
+    'Elevation(deg)',elevationAngle*180/pi,'Elevation(deg)',elevationAngle*180/pi;
+    'Carrier Power(dBW)',PcDownLink,'Carrier Power(dBW)',PcUpLink;
+    'Eff. noise temp.(K)',noiseTemp,'Eff. noise temp.(K)',noiseTempUplink;
+    'N0(W/Hz)',N0,'N0(W/Hz)',N0Uplink;
+    'Coding gain(dB)',5,'Coding gain(dB)',5;
+    'BandWidth(MHz)',BW/(10^6),'BandWidth(MHz)',BW/(10^6);
+    'Eb/N0(dB)',EbN0,'Eb/N0(dB)',EbN0_Uplink;
+    'BER(%)',berawgn(EbN0,'qam',4),'BER(%)',berawgn(EbN0_Uplink,'qam',4)};
+xlswrite('london',saveData)
 function [elevation,azimuth] = calcElevationAngle(sate,target,Re,h)
     %compute the antenna elevation angle of ground station
     %sate = [satellite_latitude; satellite_longitude] in degree
