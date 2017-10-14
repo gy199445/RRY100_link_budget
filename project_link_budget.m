@@ -24,13 +24,17 @@ satLongitude = 0;
 satLatitude = 0;
 %target ground station location
 targetLongitude = 0;
-targetLatitude = 0;
+targetLatitude = 57;
 %ground station 0.01% rain rate
-targetRainRate = 145; %zone P
+targetRainRate = 28; %zone P
 %polarization angle
 polarizationAngle = pi/4; %assume circular polarization
 %coding gain
 codingGain = 5;
+%code rate
+codeRate = 0.5;
+%roll off factor of pulse shaping
+rollOffFactor = 0.5;
 %*********Plug in your settings here***********
 %free space loss
 %link distance in meters
@@ -60,10 +64,12 @@ N0 = noiseTemp*k;
 PcDownLink = sum([satelliteAntennaGain PtxSat -LFs -rainAttenuation groundAntennaGain -0.5]);
 %UPLINK
 PcUpLink = sum([satelliteAntennaGain PtxGround -LFs -rainAttenuation groundAntennaGain -0.5]);
-%% Eb/N0
-EbN0 = PcDownLink - 10*log10(N0) - 10*log10(Rb);
+%% C/N0
+C_N0 = PcDownLink - 10*log10(N0) - 10*log10(Rb);
+%Es/N0
+%Eb/N0
 %% display result:
-fprintf('Free space loss: %.4f dB\n Rain attenuation %.4f dB\n Eb/N0: %.4f\n',LFs,rainAttenuation,EbN0)
+fprintf('Free space loss: %.4f dB\n Rain attenuation %.4f dB\n C/N0: %.4f\n',LFs,rainAttenuation,C_N0)
 %functions to be used
 function [elevation,azimuth] = calcElevationAngle(sate,target,Re,h)
     %compute the antenna elevation angle of ground station
