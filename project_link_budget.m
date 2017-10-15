@@ -15,8 +15,6 @@ groundAntennaHeight = 5/1000;
 satelliteAntennaGain = 10*log10(0.7*(pi*0.5*f/c)^2); %assume 1.5m dish
 PtxSat = 10*log10(300);
 PtxGround = 10*log10(1000); %1000W
-%tx rate
-Rb = 30*10^6;%10Mbps
 %amplifiers
 %locations
 %*********Plug in your settings here************
@@ -24,10 +22,10 @@ Rb = 30*10^6;%10Mbps
 satLongitude = -30;
 satLatitude = 0;
 %target ground station location
-targetLongitude = -82;
-targetLatitude = -54;
+targetLongitude = -0.12;
+targetLatitude = 51;
 %ground station 0.01% rain rate
-targetRainRate = 145;
+targetRainRate = 28;
 %polarization angle
 polarizationAngle = pi/4; %assume circular polarization
 %coding gain
@@ -37,9 +35,9 @@ codeRate = 0.5;
 %roll off factor of pulse shaping
 rollOffFactor = 0.5;
 %calculate bandwidth
-infoBitRate = 10*10^6; %in bps
+infoBitRate = 30*10^6; %in bps
 rawBitRate = infoBitRate/codeRate;
-MCS = 4;%for QPSK (2 bits/symbol)
+MCS = 8;%for QPSK (2 bits/symbol)
 BW = rawBitRate/log2(MCS) * (1+rollOffFactor);
 %*********Plug in your settings here***********
 %free space loss
@@ -99,7 +97,7 @@ saveData = {'DOWNLINK',' ','UPLINK',' ';
     'Coding gain(dB)',5,'Coding gain(dB)',5;
     'BandWidth(MHz)',BW/(10^6),'BandWidth(MHz)',BW/(10^6);
     'Eb/N0(dB)',EbN0,'Eb/N0(dB)',EbN0_Uplink;
-    'BER(%)',berawgn(EbN0,'qam',4),'BER(%)',berawgn(EbN0_Uplink,'qam',4)};
+    'BER(%)',berawgn(EbN0,'qam',MCS),'BER(%)',berawgn(EbN0_Uplink,'qam',MCS)};
 xlswrite('london',saveData)
 function [elevation,azimuth] = calcElevationAngle(sate,target,Re,h)
     %compute the antenna elevation angle of ground station
