@@ -192,7 +192,8 @@ function [noiseTemp] = noiseTempCalc(noiseFigures,gains)
 end
 function [h0] = calcRainHeight(targetLatitude)
 %h0   height of isotherm
-%targetLatitude: latitude in deg
+%targetLatitude: latitude in rad
+targetLatitude = targetLatitude*180/pi;
     if targetLatitude>23
         h0 = 5-0.075*(targetLatitude-23);
     elseif targetLatitude>0 && targetLatitude<23
