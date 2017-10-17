@@ -22,10 +22,10 @@ PtxGround = 10*log10(1000); %1000W
 satLongitude = -30;
 satLatitude = 0;
 %target ground station location
-targetLongitude = -0.12;
-targetLatitude = 51;
+targetLongitude = -82;
+targetLatitude = -52;
 %ground station 0.01% rain rate
-targetRainRate = 28;
+targetRainRate = 145;
 %polarization angle
 polarizationAngle = pi/4; %assume circular polarization
 %coding gain
@@ -35,9 +35,9 @@ codeRate = 0.5;
 %roll off factor of pulse shaping
 rollOffFactor = 0.5;
 %calculate bandwidth
-infoBitRate = 30*10^6; %in bps
+infoBitRate = 10*10^6; %in bps
 rawBitRate = infoBitRate/codeRate;
-MCS = 8;%for QPSK (2 bits/symbol)
+MCS = 4;%for QPSK (2 bits/symbol)
 BW = rawBitRate/log2(MCS) * (1+rollOffFactor);
 %*********Plug in your settings here***********
 %free space loss
@@ -59,27 +59,28 @@ rainAttenuation = ...
 rainAttenuationLinear = 10^(rainAttenuation/10);
 TRain = 275*(1-1/rainAttenuationLinear);
 Tsky = 9/(rainAttenuationLinear);
+TEarth = 290;
 TpFeeder = 290;%ground station antenna feeder phy. temp.
 LFeeder = 1.1220; %loss = 0.5dB
 TFeederEff = TpFeeder*(LFeeder-1);
 noiseTempAMP = noiseTempCalc([1 2 2],[15 30 40]);
 noiseTemp = (TRain + Tsky + TFeederEff)/LFeeder + noiseTempAMP;
-noiseTempUplink = (290+LFeeder)/LFeeder + noiseTempAMP;
-N0 = noiseTemp*k;
+noiseTempUplink = (TEarth+TFeederEff)/LFeeder + noiseTempAMP;
+N0 = noiseTemp*k;%noise PSD
 N0Uplink = noiseTempUplink*k;
-N = N0 * BW;
+N = N0 * BW;%noise Power
 NUplink = N0Uplink * BW;
 %% carrier power
 %DOWNLINK
-PcDownLink = sum([satelliteAntennaGain PtxSat -LFs -rainAttenuation groundAntennaGain -0.5 + codingGain]);
+PcDownLink = sum([satelliteAntennaGain PtxSat -LFs -rainAttenuation groundAntennaGain -0.5 codingGain]);
 %UPLINK
-PcUpLink = sum([satelliteAntennaGain PtxGround -LFs -rainAttenuation groundAntennaGain -0.5 +codingGain]);
-%% C/N (Es/N0)
+PcUpLink = sum([satelliteAntennaGain PtxGround -LFs -rainAttenuation groundAntennaGain -0.5 codingGain]);
+%% C/N and Eb/N0
 C_N = PcDownLink - 10*log10(N);
-C_N_Uplink = PcUpLink - 10*log10(N);
-%Eb/N0
-EbN0 = C_N  + 10*log10(infoBitRate/BW);
-EbN0_Uplink = C_N_Uplink + 10*log10(infoBitRate/BW);
+C_N_Uplink = PcUpLink - 10*log10(NUplink);
+%Eb/N0 (wikipedia Eb/N0)
+EbN0 = C_N  - 10*log10(infoBitRate/BW);
+EbN0_Uplink = C_N_Uplink - 10*log10(infoBitRate/BW);
 %% save result to xls:
 xlsName = 'link_budget';
 saveData = {'DOWNLINK',' ','UPLINK',' ';
@@ -92,13 +93,13 @@ saveData = {'DOWNLINK',' ','UPLINK',' ';
     'Rx feeder loss(dB)',0.5,'Rx feeder loss(dB)',0.5;
     'Elevation(deg)',elevationAngle*180/pi,'Elevation(deg)',elevationAngle*180/pi;
     'Carrier Power(dBW)',PcDownLink,'Carrier Power(dBW)',PcUpLink;
-    'Eff. noise temp.(K)',noiseTemp,'Eff. noise temp.(K)',noiseTempUplink;
+    'Sys. noise temp.(K)',noiseTemp,'Sys. noise temp.(K)',noiseTempUplink;
     'N0(W/Hz)',N0,'N0(W/Hz)',N0Uplink;
     'Coding gain(dB)',5,'Coding gain(dB)',5;
     'BandWidth(MHz)',BW/(10^6),'BandWidth(MHz)',BW/(10^6);
     'Eb/N0(dB)',EbN0,'Eb/N0(dB)',EbN0_Uplink;
     'BER(%)',berawgn(EbN0,'qam',MCS),'BER(%)',berawgn(EbN0_Uplink,'qam',MCS)};
-xlswrite('london',saveData)
+xlswrite('virtual_point',saveData)
 function [elevation,azimuth] = calcElevationAngle(sate,target,Re,h)
     %compute the antenna elevation angle of ground station
     %sate = [satellite_latitude; satellite_longitude] in degree
